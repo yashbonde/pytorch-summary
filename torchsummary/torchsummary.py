@@ -6,15 +6,29 @@ from collections import OrderedDict
 import numpy as np
 
 
-def summary(model, input_size, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
-    result, params_info = summary_string(
-        model, input_size, batch_size, device, dtypes)
+def summary(model, input_size = None, inputs = None, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
+    """
+    get the summary of model Keras style, can handle dictionaries as well.
+    :param model: pytorch model
+    :param input_size: input size of data
+    :param inputs: actual inputs to the model
+    :param batch_size: batch size for the model
+    :param device: device to run model on
+    :param dtypes: torch datatype for each input dims
+    """
+    if input_size is not None:
+        inputs = input_size
+    elif inputs is not None:
+        inputs = inputs
+    else:
+        raise ValueError("Provide either input_size or inputs, cannot pass both arguments")
+    result, params_info = summary_string(model, inputs, batch_size, device, dtypes)
     print(result)
 
     return params_info
 
 
-def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
+def summary_string(model, inputs, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
     if dtypes == None:
         dtypes = [torch.FloatTensor]*len(input_size)
 
@@ -51,24 +65,28 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
         ):
             hooks.append(module.register_forward_hook(hook))
 
-    # multiple inputs to the network
-    if isinstance(input_size, tuple):
-        input_size = [input_size]
-
-    # batch_size of 2 for batchnorm
-    x = [torch.rand(2, *in_size).type(dtype).to(device=device)
-         for in_size, dtype in zip(input_size, dtypes)]
-
-    # create properties
+    # create properties before hand and passing the inputs
     summary = OrderedDict()
     hooks = []
 
     # register hook
     model.apply(register_hook)
 
-    # make a forward pass
-    # print(x.shape)
-    model(*x)
+    # multiple inputs to the network
+    if isinstance(inputs, tuple):
+        input_size = [inputs]
+        
+        # batch_size of 2 for batchnorm
+        x = [
+            torch.rand(2, *in_size).type(dtype).to(device=device)
+            for in_size, dtype in zip(input_size, dtypes)
+        ]
+        # make a forward pass
+        model(*x)
+        
+    elif isinstance(inputs, dict):
+        # this is a dictionary of data pass it as is
+        model(**inputs)
 
     # remove these hooks
     for h in hooks:
@@ -108,8 +126,7 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     summary_str += "================================================================" + "\n"
     summary_str += "Total params: {0:,}".format(total_params) + "\n"
     summary_str += "Trainable params: {0:,}".format(trainable_params) + "\n"
-    summary_str += "Non-trainable params: {0:,}".format(total_params -
-                                                        trainable_params) + "\n"
+    summary_str += "Non-trainable params: {0:,}".format(total_params - trainable_params) + "\n"
     summary_str += "----------------------------------------------------------------" + "\n"
     summary_str += "Input size (MB): %0.2f" % total_input_size + "\n"
     summary_str += "Forward/backward pass size (MB): %0.2f" % total_output_size + "\n"
